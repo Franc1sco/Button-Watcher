@@ -1,6 +1,6 @@
 /*  Button Watcher
  *
- *  Copyright (C) 2017 Francisco 'Franc1sco' García
+ *  Copyright (C) 2017-2018 Francisco 'Franc1sco' García
  * 
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -18,46 +18,89 @@
 #include <sourcemod>
 #include <sdktools>
 
-new bool:espresionado[2048];
+bool g_bPressed[2048];
 
-public Plugin:myinfo =
+ConVar cv_showtype, cv_log, cv_onlyadmins;
+
+public Plugin myinfo =
 {
 	name = "Button Watcher",
 	author = "Franc1sco franug",
 	description = "Generates an output when a button is pressed",
-	version = "1.1",
+	version = "2.0",
 	url = "http://steamcommunity.com/id/franug"
 };
 
-public OnPluginStart()
+public void OnPluginStart()
 {
-	HookEntityOutput("func_button", "OnPressed", Presionado);
-	CreateConVar("sm_buttonwatcher", "1.1", "", FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	HookEntityOutput("func_button", "OnPressed", Button_Pressed);
+	CreateConVar("sm_buttonwatcher", "1.2", "", FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	
+	cv_showtype = CreateConVar("sm_buttonwatcher_showtype", "1", "1 = show in chat. 0 = show in console");
+	
+	cv_log = CreateConVar("sm_buttonwatcher_log", "1", "1 = enabled logging. 0 = disabled logging");
+	
+	cv_onlyadmins = CreateConVar("sm_buttonwatcher_onlyadmins", "0", "1 = show only for admins. 0 = show for everybody");
 }
 
-public Presionado(const String:output[], caller, activator, Float:delay)
+public void Button_Pressed(const char[] output, int caller, int activator, float delay)
 {
-	if(!IsValidClient(activator)) return;
+	if(!IsValidClient(activator) || !IsValidEntity(caller)) return;
 	
-	if(espresionado[caller]) return;
+	if(g_bPressed[caller]) return;
 	
 	decl String:entity[512];
 	GetEntPropString(caller, Prop_Data, "m_iName", entity, sizeof(entity));
 
-	PrintToChatAll(" \x02[BW] \x0C%N \x04pressed button\x0C %i %s", activator, caller, entity);
+	if(GetConVarBool(cv_showtype)) 
+	{
+		if(!GetConVarBool(cv_onlyadmins)) 
+		{
+			PrintToChatAll(" \x02[BW] \x0C%N \x04pressed button\x0C %i %s", activator, caller, entity);
+		}
+		else 
+		{
+			for (int i = 1; i <= MaxClients; i++)
+			{	
+				if (IsClientInGame(i) && (GetUserAdmin(i) != INVALID_ADMIN_ID || IsClientSourceTV(i)))
+				{
+					PrintToChat(i, " \x02[BW] \x0C%N \x04pressed button\x0C %i %s", activator, caller, entity);
+				}
+			}
+		}
+	}
+	else
+	{
+		if(!GetConVarBool(cv_onlyadmins)) 
+		{
+			PrintToConsoleAll("[BW] %N pressed button %i %s", activator, caller, entity);
+		}
+		else 
+		{
+			for (int i = 1; i <= MaxClients; i++)
+			{	
+				if (IsClientInGame(i) && (GetUserAdmin(i) != INVALID_ADMIN_ID || IsClientSourceTV(i)))
+				{
+					PrintToConsole(i, "[BW] %N pressed button %i %s", activator, caller, entity);
+				}
+			}
+		}
+		
+	}
 	
-	LogMessage("[BW] %L pressed the button %i %s", activator, caller, entity)
+	if(GetConVarBool(cv_log)) 
+		LogMessage("[BW] %L pressed the button %i %s", activator, caller, entity)
 	
-	espresionado[caller] = true;
-	CreateTimer(5.0, Pasado, caller);
+	g_bPressed[caller] = true;
+	CreateTimer(5.0, Timer_End, caller);
 }
 
-public Action:Pasado(Handle:timer, any:entity)
+public Action Timer_End(Handle timer, int entity)
 {
-	espresionado[entity] = false;
+	g_bPressed[entity] = false;
 }
 
-public IsValidClient( client ) 
+public bool IsValidClient( int client ) 
 { 
     if ( !( 1 <= client <= MaxClients ) || !IsClientInGame(client) || !IsPlayerAlive(client) ) 
         return false; 
